@@ -51,6 +51,7 @@ from ceilometer.openstack.common.gettextutils import _
 from ceilometer.openstack.common import log
 from ceilometer.openstack.common import strutils
 from ceilometer.openstack.common import timeutils
+from ceilometer import policy
 from ceilometer import sample
 from ceilometer import storage
 from ceilometer import utils
@@ -276,6 +277,47 @@ class ProjectNotAuthorized(ClientSideError):
         super(ProjectNotAuthorized, self).__init__(
             _("Not Authorized to access %(aspect)s %(id)s") % params,
             status_code=401)
+
+
+class OperationNotAuthorized(ClientSideError):
+    def __init__(self):
+        super(OperationNotAuthorized, self).__init__(
+            _('Policy has disabled this operation according to '
+              'your current privilege'), status_code=401)
+
+
+class AttributeNotAuthorized(ClientSideError):
+    def __init__(self, attr):
+        super(AttributeNotAuthorized, self).__init__(
+            _('Policy has disabled to access attribute %s according to '
+              'your current privilege'), status_code=401)
+
+
+def _get_policy_creds():
+    return {
+        'project_id': pecan.request.headers.get('X-Project-Id'),
+        'user_id': pecan.request.headers.get('X-User-Id'),
+        'roles': pecan.request.headers.get('X-Roles', '').split(','),
+    }
+
+
+def _get_policy_target(entity):
+    return {
+        'project_id': getattr(entity, 'project_id', None),
+        'user_id': getattr(entity, 'user_id', None),
+    }
+
+
+def _policy_enforce(rule, entity, attrs=None):
+    target = _get_policy_target(entity)
+    creds = _get_policy_creds()
+    policy.enforce(rule, target, creds, exc=ProjectNotAuthorized,
+                   id=target.get('project_id'))
+    if attrs:
+        for attr in attrs:
+            policy.enforce('%s:%s' % (rule, attr), target, creds,
+                           exc=ProjectNotAuthorized, aspect=attr,
+                           id=target.get(attr))
 
 
 def _get_auth_project(on_behalf_of=None):
@@ -1922,7 +1964,9 @@ class AlarmController(rest.RestController):
     def get(self):
         """Return this alarm.
         """
-        return Alarm.from_db_model(self._alarm())
+        alarm = self._alarm()
+        _policy_enforce('get_alarm', alarm)
+        return Alarm.from_db_model(alarm)
 
     @wsme_pecan.wsexpose(Alarm, body=Alarm)
     def put(self, data):
@@ -1932,19 +1976,17 @@ class AlarmController(rest.RestController):
         """
         # Ensure alarm exists
         alarm_in = self._alarm()
+        data.alarm_id = self._id
+
+        user, project = acl.get_limited_to(pecan.request.headers)
+        if data.user_id == wtypes.Unset:
+            data.user_id = alarm_in.user_id
+        if data.project_id == wtypes.Unset:
+            data.project_id = alarm_in.project_id
+
+        _policy_enforce("update_alarm", data)
 
         now = timeutils.utcnow()
-
-        data.alarm_id = self._id
-        user, project = acl.get_limited_to(pecan.request.headers)
-        if user:
-            data.user_id = user
-        elif data.user_id == wtypes.Unset:
-            data.user_id = alarm_in.user_id
-        if project:
-            data.project_id = project
-        elif data.project_id == wtypes.Unset:
-            data.project_id = alarm_in.project_id
         data.timestamp = now
         if alarm_in.state != data.state:
             data.state_timestamp = now
@@ -1989,6 +2031,7 @@ class AlarmController(rest.RestController):
         """
         # ensure alarm exists before deleting
         alarm = self._alarm()
+        _policy_enforce("delete_alarm", alarm)
         self.conn.delete_alarm(alarm.alarm_id)
         change = Alarm.from_db_model(alarm).as_dict(storage.models.Alarm)
         self._record_change(change,
@@ -2011,9 +2054,13 @@ class AlarmController(rest.RestController):
         conn = pecan.request.storage_conn
         kwargs = _query_to_kwargs(q, conn.get_alarm_changes, ['on_behalf_of',
                                                               'alarm_id'])
-        return [AlarmChange.from_db_model(ac)
-                for ac in conn.get_alarm_changes(self._id, auth_project,
-                                                 **kwargs)]
+        alarm_histories =  list(
+            conn.get_alarm_changes(self._id, auth_project, **kwargs))
+        if alarm_histories:
+            alarm_history = copy.deepcopy(alarm_histories[0])
+            alarm_history.project_id = alarm_history.on_behalf_of
+            _policy_enforce("get_alarm_history", alarm_history)
+        return [AlarmChange.from_db_model(ac) for ac in alarm_histories]
 
     @wsme.validate(state_kind_enum)
     @wsme_pecan.wsexpose(state_kind_enum, body=state_kind_enum)
@@ -2028,6 +2075,7 @@ class AlarmController(rest.RestController):
             raise ClientSideError(_("state invalid"))
         now = timeutils.utcnow()
         alarm = self._alarm()
+        _policy_enforce('update_alarm', alarm)
         alarm.state = state
         alarm.state_timestamp = now
         alarm = self.conn.update_alarm(alarm)
@@ -2041,6 +2089,7 @@ class AlarmController(rest.RestController):
         """Get the state of this alarm.
         """
         alarm = self._alarm()
+        _policy_enforce('get_alarm', alarm)
         return alarm.state
 
 
@@ -2090,21 +2139,28 @@ class AlarmsController(rest.RestController):
         data.alarm_id = str(uuid.uuid4())
         user_limit, project_limit = acl.get_limited_to(pecan.request.headers)
 
-        def _set_ownership(aspect, owner_limitation, header):
-            attr = '%s_id' % aspect
-            requested_owner = getattr(data, attr)
-            explicit_owner = requested_owner != wtypes.Unset
-            caller = pecan.request.headers.get(header)
-            if (owner_limitation and explicit_owner
-                    and requested_owner != caller):
-                raise ProjectNotAuthorized(requested_owner, aspect)
+#        def _set_ownership(aspect, owner_limitation, header):
+#            attr = '%s_id' % aspect
+#            requested_owner = getattr(data, attr)
+#            explicit_owner = requested_owner != wtypes.Unset
+#            caller = pecan.request.headers.get(header)
+#            if (owner_limitation and explicit_owner
+#                    and requested_owner != caller):
+#                raise ProjectNotAuthorized(requested_owner, aspect)
+#
+#            actual_owner = (owner_limitation or
+#                            requested_owner if explicit_owner else caller)
+#            setattr(data, attr, actual_owner)
+#
+#        _set_ownership('user', user_limit, 'X-User-Id')
+#        _set_ownership('project', project_limit, 'X-Project-Id')
 
-            actual_owner = (owner_limitation or
-                            requested_owner if explicit_owner else caller)
-            setattr(data, attr, actual_owner)
+        if data.user_id == wtypes.Unset:
+            data.user_id = pecan.request.headers.get('X-User-Id')
+        if data.project_id == wtypes.Unset:
+            data.project_id = pecan.request.headers.get('X-Project-Id')
 
-        _set_ownership('user', user_limit, 'X-User-Id')
-        _set_ownership('project', project_limit, 'X-Project-Id')
+        _policy_enforce('create_alarm', data, ['user_id'])
 
         data.timestamp = now
         data.state_timestamp = now

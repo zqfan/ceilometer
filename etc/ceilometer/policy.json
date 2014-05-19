@@ -1,3 +1,20 @@
 {
-    "context_is_admin":  [["role:admin"]]
+    "context_is_admin":  "role:admin",
+    "owner": "project_id:%(project_id)s",
+    "direct_owner": "rule:owner and user_id:%(user_id)s",
+    "admin_or_owner": "rule:context_is_admin or rule:owner",
+    "admin_or_direct_owner": "rule:context_is_admin or rule:direct_owner",
+
+    "default": "rule:context_is_admin",
+
+    "get_alarm": "rule:admin_or_owner",
+    "update_alarm": "rule:admin_or_owner",
+    "create_alarm": "rule:admin_or_owner",
+    "create_alarm:user_id": "rule:admin_or_direct_owner",
+    "delete_alarm": "rule:admin_or_owner",
+
+    "get_alarm_history": "rule:admin_or_owner",
+
+    "get_sample": "rule:admin_or_owner",
+    "create_sample": "rule:admin_or_direct_owner"
 }
