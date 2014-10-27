@@ -73,6 +73,9 @@ class Sample(object):
     def as_dict(self):
         return copy.copy(self.__dict__)
 
+    def __repr__(self):
+        return str(self.as_dict())
+
     @classmethod
     def from_notification(cls, name, type, volume, unit,
                           user_id, project_id, resource_id,
