@@ -25,6 +25,8 @@ from ceilometer.openstack.common import log
 
 
 CONF = cfg.CONF
+CONF.import_opt('http_timeout', 'ceilometer.service',
+                group='service_credentials')
 
 
 LOG = log.getLogger(__name__)
@@ -170,7 +172,8 @@ class Client():
         req_params = {
             'headers': {
                 'Accept': 'application/json'
-            }
+            },
+            'timeout': CONF.service_credentials.http_timeout,
         }
 
         auth_way = params.get('auth')

@@ -88,6 +88,7 @@ class AlarmService(object):
                 os_cacert=auth_config.os_cacert,
                 os_endpoint_type=auth_config.os_endpoint_type,
                 insecure=auth_config.insecure,
+                timeout=auth_config.http_timeout,
             )
             self.api_client = ceiloclient.get_client(2, **creds)
         return self.api_client

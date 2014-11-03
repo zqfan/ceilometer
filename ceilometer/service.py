@@ -84,6 +84,10 @@ CLI_OPTS = [
                 default=False,
                 help='Disables X.509 certificate validation when an '
                      'SSL connection to Identity Service is established.'),
+    cfg.IntOpt('http_timeout',
+               default=600,
+               help='Timeout seconds for HTTP requests. Set it to None to '
+                    'disable timeout.'),
 ]
 cfg.CONF.register_cli_opts(CLI_OPTS, group="service_credentials")
 

@@ -104,6 +104,11 @@ os_tenant_id                                                           Tenant ID
 os_tenant_name                   admin                                 Tenant name to use for openstack service access
 os_auth_url                      http://localhost:5000/v2.0            Auth URL to use for openstack service access
 os_endpoint_type                 publicURL                             Endpoint type in the catalog to use to access services
+os-region-name                                                         (Str) Region name to use for OpenStack service endpoints.
+insecure                         False                                 (Bool) Disables X.509 certificate validation when an SSL
+                                                                       connection to Identity Service is established.
+http_timeout                     600                                   (Int) Timeout seconds for HTTP requests. Set it to None to
+                                                                       disable timeout.
 ===============================  ====================================  ==============================================================
 
 Keystone Middleware Authentication

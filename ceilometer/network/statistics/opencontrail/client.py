@@ -24,6 +24,8 @@ from ceilometer.openstack.common import log
 
 
 CONF = cfg.CONF
+CONF.import_opt('http_timeout', 'ceilometer.service',
+                group='service_credentials')
 
 
 LOG = log.getLogger(__name__)
@@ -98,7 +100,8 @@ class AnalyticsAPIBaseClient(object):
             'data': data,
             'verify': self.verify_ssl,
             'allow_redirects': False,
-            'cookies': cookies
+            'cookies': cookies,
+            'timeout': CONF.service_credentials.http_timeout,
         }
 
         return req_params

@@ -44,6 +44,7 @@ class TrustRestAlarmNotifier(rest.RestAlarmNotifier):
             auth_url=auth_url,
             region_name=cfg.CONF.service_credentials.os_region_name,
             insecure=cfg.CONF.service_credentials.insecure,
+            timeout=cfg.CONF.service_credentials.http_timeout,
             trust_id=trust_id)
 
         # Remove the fake user

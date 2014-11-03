@@ -65,7 +65,8 @@ class Client(object):
             'auth_url': conf.os_auth_url,
             'region_name': conf.os_region_name,
             'endpoint_type': conf.os_endpoint_type,
-            'service_type': cfg.CONF.service_types.neutron
+            'timeout': conf.http_timeout,
+            'service_type': cfg.CONF.service_types.neutron,
         }
 
         if conf.os_tenant_id:

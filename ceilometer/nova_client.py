@@ -74,6 +74,7 @@ class Client(object):
             bypass_url=bypass_url,
             cacert=conf.os_cacert,
             insecure=conf.insecure,
+            timeout=conf.http_timeout,
             http_log_debug=cfg.CONF.nova_http_log_debug,
             no_cache=True)
 
