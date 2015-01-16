@@ -16,8 +16,7 @@ import functools
 import novaclient
 from novaclient.v1_1 import client as nova_client
 from oslo_config import cfg
-
-from ceilometer.openstack.common import log
+from oslo_log import log
 
 
 OPTS = [

@@ -16,6 +16,7 @@
 import oslo.messaging
 from oslo_config import cfg
 from oslo_context import context
+from oslo_log import log
 from stevedore import extension
 
 from ceilometer.agent import plugin_base as base
@@ -23,7 +24,6 @@ from ceilometer import coordination
 from ceilometer.event import endpoint as event_endpoint
 from ceilometer.i18n import _, _LW
 from ceilometer import messaging
-from ceilometer.openstack.common import log
 from ceilometer.openstack.common import service as os_service
 from ceilometer import pipeline
 from ceilometer import utils

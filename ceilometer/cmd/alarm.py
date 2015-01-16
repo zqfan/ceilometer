@@ -15,10 +15,10 @@
 # under the License.
 
 from oslo_config import cfg
+from oslo_log import log
 from stevedore import driver
 
 from ceilometer.alarm import service as alarm_service
-from ceilometer.openstack.common import log
 from ceilometer.openstack.common import service as os_service
 from ceilometer import service
 

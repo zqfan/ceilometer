@@ -19,9 +19,9 @@
 
 import oslo.messaging
 from oslo_config import cfg
+from oslo_log import log
 
 from ceilometer.agent import plugin_base
-from ceilometer.openstack.common import log
 from ceilometer import sample
 
 OPTS = [

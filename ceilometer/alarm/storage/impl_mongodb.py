@@ -20,10 +20,10 @@
 # under the License.
 """MongoDB storage backend"""
 
+from oslo_log import log
 import pymongo
 
 from ceilometer.alarm.storage import pymongo_base
-from ceilometer.openstack.common import log
 from ceilometer import storage
 from ceilometer.storage.mongo import utils as pymongo_utils
 
