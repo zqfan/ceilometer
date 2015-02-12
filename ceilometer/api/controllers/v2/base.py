@@ -30,6 +30,7 @@ import wsme
 from wsme import types as wtypes
 
 from ceilometer.i18n import _
+from ceilometer.storage import base
 
 
 operation_kind = ('lt', 'le', 'eq', 'ne', 'ge', 'gt')
@@ -122,6 +123,34 @@ class Link(Base):
                          'q.value=bd9431c1-8d69-4ad3-803a-8d4a6b89fd36'),
                    rel='volume'
                    )
+
+
+class Pagination(Base):
+    """A container for pagination parameters."""
+
+    limit = wsme.wsattr(wtypes.IntegerType(minimum=0), default=1000)
+    "Maximum number of items to return per page"
+
+    marker = wtypes.text
+    "The value to identify pagination marker"
+
+    sort_key = wtypes.text
+    "Sort key for result"
+
+    sort_dir = AdvEnum('sort_dir', str, 'asce', 'desc', default='desc')
+
+    def to_db_model(self):
+        marker = None
+        sort_keys = [] if not self.sort_key else [self.sort_key]
+        if self.marker:
+            if not self.sort_key:
+                raise ClientSideError(_("sortk_key should be specified when "
+                                        "use marker."))
+            marker = {self.sort_key: self.marker}
+        return base.Pagination(limit=self.limit,
+                               sort_keys=sort_keys,
+                               sort_dirs=self.sort_dir,
+                               marker_value=marker)
 
 
 class Query(Base):

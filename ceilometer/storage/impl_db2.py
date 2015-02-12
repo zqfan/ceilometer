@@ -90,8 +90,6 @@ class Connection(pymongo_base.Connection):
                'duration_end': 1,
                }
 
-    SORT_OPERATION_MAP = {'desc': pymongo.DESCENDING, 'asc': pymongo.ASCENDING}
-
     SECONDS_IN_A_DAY = 86400
 
     def __init__(self, url):
@@ -124,28 +122,6 @@ class Connection(pymongo_base.Connection):
                                  connection_options['password'])
 
         self.upgrade()
-
-    @classmethod
-    def _build_sort_instructions(cls, sort_keys=None, sort_dir='desc'):
-        """Returns a sort_instruction.
-
-        Sort instructions are used in the query to determine what attributes
-        to sort on and what direction to use.
-        :param q: The query dict passed in.
-        :param sort_keys: array of attributes by which results be sorted.
-        :param sort_dir: direction in which results be sorted (asc, desc).
-        :return: sort parameters
-        """
-        sort_keys = sort_keys or []
-        sort_instructions = []
-        _sort_dir = cls.SORT_OPERATION_MAP.get(
-            sort_dir, cls.SORT_OPERATION_MAP['desc'])
-
-        for _sort_key in sort_keys:
-            _instruction = (_sort_key, _sort_dir)
-            sort_instructions.append(_instruction)
-
-        return sort_instructions
 
     def upgrade(self, version=None):
         # Establish indexes
@@ -292,8 +268,8 @@ class Connection(pymongo_base.Connection):
 
         sort_keys = base._handle_sort_key('resource', 'timestamp')
         sort_keys.insert(0, 'resource_id')
-        sort_instructions = self._build_sort_instructions(sort_keys=sort_keys,
-                                                          sort_dir='desc')
+        sort_instructions, __ = pymongo_utils._build_sort_instructions(
+            sort_keys=sort_keys, sort_dir='desc')
         resource = lambda x: x['resource_id']
         meters = self.db.meter.find(q, sort=sort_instructions)
         for resource_id, r_meters in itertools.groupby(meters, key=resource):
@@ -346,8 +322,8 @@ class Connection(pymongo_base.Connection):
         else:
             sort_keys = ['counter_name', 'timestamp']
 
-        sort_instructions = self._build_sort_instructions(sort_keys=sort_keys,
-                                                          sort_dir='asc')
+        sort_instructions, __ = pymongo_utils._build_sort_instructions(
+            sort_keys=sort_keys, sort_dir='asc')
         meters = self.db.meter.find(q, sort=sort_instructions)
 
         def _group_key(meter):

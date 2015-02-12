@@ -346,9 +346,6 @@ class Connection(pymongo_base.Connection):
         return value;
     }""")
 
-    SORT_OPERATION_MAPPING = {'desc': (pymongo.DESCENDING, '$lt'),
-                              'asc': (pymongo.ASCENDING, '$gt')}
-
     MAP_RESOURCES = bson.code.Code("""
     function () {
         emit(this.resource_id,
@@ -553,134 +550,6 @@ class Connection(pymongo_base.Connection):
         LOG.debug(_("Clearing expired metering data is based on native "
                     "MongoDB time to live feature and going in background."))
 
-    @staticmethod
-    def _get_marker(db_collection, marker_pairs):
-        """Return the mark document according to the attribute-value pairs.
-
-        :param db_collection: Database collection that be query.
-        :param maker_pairs: Attribute-value pairs filter.
-        """
-        if db_collection is None:
-            return
-        if not marker_pairs:
-            return
-        ret = db_collection.find(marker_pairs, limit=2)
-
-        if ret.count() == 0:
-            raise base.NoResultFound
-        elif ret.count() > 1:
-            raise base.MultipleResultsFound
-        else:
-            _ret = ret.__getitem__(0)
-            return _ret
-
-    @classmethod
-    def _recurse_sort_keys(cls, sort_keys, marker, flag):
-        _first = sort_keys[0]
-        value = marker[_first]
-        if len(sort_keys) == 1:
-            return {_first: {flag: value}}
-        else:
-            criteria_equ = {_first: {'eq': value}}
-            criteria_cmp = cls._recurse_sort_keys(sort_keys[1:], marker, flag)
-        return dict(criteria_equ, ** criteria_cmp)
-
-    @classmethod
-    def _build_paginate_query(cls, marker, sort_keys=None, sort_dir='desc'):
-        """Returns a query with sorting / pagination.
-
-        Pagination works by requiring sort_key and sort_dir.
-        We use the last item in previous page as the 'marker' for pagination.
-        So we return values that follow the passed marker in the order.
-        :param q: The query dict passed in.
-        :param marker: the last item of the previous page; we return the next
-                       results after this item.
-        :param sort_keys: array of attributes by which results be sorted.
-        :param sort_dir: direction in which results be sorted (asc, desc).
-        :return: sort parameters, query to use
-        """
-        all_sort = []
-        sort_keys = sort_keys or []
-        all_sort, _op = cls._build_sort_instructions(sort_keys, sort_dir)
-
-        if marker is not None:
-            sort_criteria_list = []
-
-            for i in range(len(sort_keys)):
-                # NOTE(fengqian): Generate the query criteria recursively.
-                # sort_keys=[k1, k2, k3], maker_value=[v1, v2, v3]
-                # sort_flags = ['$lt', '$gt', 'lt'].
-                # The query criteria should be
-                # {'k3': {'$lt': 'v3'}, 'k2': {'eq': 'v2'}, 'k1':
-                #     {'eq': 'v1'}},
-                # {'k2': {'$gt': 'v2'}, 'k1': {'eq': 'v1'}},
-                # {'k1': {'$lt': 'v1'}} with 'OR' operation.
-                # Each recurse will generate one items of three.
-                sort_criteria_list.append(cls._recurse_sort_keys(
-                                          sort_keys[:(len(sort_keys) - i)],
-                                          marker, _op))
-
-            metaquery = {"$or": sort_criteria_list}
-        else:
-            metaquery = {}
-
-        return all_sort, metaquery
-
-    @classmethod
-    def _build_sort_instructions(cls, sort_keys=None, sort_dir='desc'):
-        """Returns a sort_instruction and paging operator.
-
-        Sort instructions are used in the query to determine what attributes
-        to sort on and what direction to use.
-        :param q: The query dict passed in.
-        :param sort_keys: array of attributes by which results be sorted.
-        :param sort_dir: direction in which results be sorted (asc, desc).
-        :return: sort instructions and paging operator
-        """
-        sort_keys = sort_keys or []
-        sort_instructions = []
-        _sort_dir, operation = cls.SORT_OPERATION_MAPPING.get(
-            sort_dir, cls.SORT_OPERATION_MAPPING['desc'])
-
-        for _sort_key in sort_keys:
-            _instruction = (_sort_key, _sort_dir)
-            sort_instructions.append(_instruction)
-
-        return sort_instructions, operation
-
-    @classmethod
-    def paginate_query(cls, q, db_collection, limit=None, marker=None,
-                       sort_keys=None, sort_dir='desc'):
-        """Returns a query result with sorting / pagination.
-
-        Pagination works by requiring sort_key and sort_dir.
-        We use the last item in previous page as the 'marker' for pagination.
-        So we return values that follow the passed marker in the order.
-
-        :param q: the query dict passed in.
-        :param db_collection: Database collection that be query.
-        :param limit: maximum number of items to return.
-        :param marker: the last item of the previous page; we return the next
-                       results after this item.
-        :param sort_keys: array of attributes by which results be sorted.
-        :param sort_dir: direction in which results be sorted (asc, desc).
-
-        :return: The query with sorting/pagination added.
-        """
-
-        sort_keys = sort_keys or []
-        all_sort, query = cls._build_paginate_query(marker,
-                                                    sort_keys,
-                                                    sort_dir)
-        q.update(query)
-
-        # NOTE(Fengqian): MongoDB collection.find can not handle limit
-        # when it equals None, it will raise TypeError, so we treat
-        # None as 0 for the value of limit.
-        if limit is None:
-            limit = 0
-        return db_collection.find(q, limit=limit, sort=all_sort)
-
     def _get_time_constrained_resources(self, query,
                                         start_timestamp, start_timestamp_op,
                                         end_timestamp, end_timestamp_op,
@@ -718,7 +587,8 @@ class Connection(pymongo_base.Connection):
             query['timestamp'] = ts_range
 
         sort_keys = base._handle_sort_key('resource')
-        sort_instructions = self._build_sort_instructions(sort_keys)[0]
+        sort_instructions = (pymongo_utils
+                             ._build_sort_instructions(sort_keys)[0])
 
         # use a unique collection name for the results collection,
         # as result post-sorting (as oppposed to reduce pre-sorting)
@@ -761,7 +631,8 @@ class Connection(pymongo_base.Connection):
         keys = base._handle_sort_key('resource')
         sort_keys = ['last_sample_timestamp' if i == 'timestamp' else i
                      for i in keys]
-        sort_instructions = self._build_sort_instructions(sort_keys)[0]
+        sort_instructions = (pymongo_utils
+                             ._build_sort_instructions(sort_keys)[0])
 
         for r in self.db.resource.find(query, sort=sort_instructions):
             yield models.Resource(

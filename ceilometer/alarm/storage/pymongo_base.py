@@ -95,9 +95,6 @@ class Connection(base.Connection):
         :param alarm_type: Optional alarm type.
         :param severity: Optional alarm severity.
         """
-        if pagination:
-            raise ceilometer.NotImplementedError('Pagination not implemented')
-
         q = {}
         if user is not None:
             q['user_id'] = user
@@ -118,10 +115,21 @@ class Connection(base.Connection):
         if severity is not None:
             q['severity'] = severity
 
-        return self._retrieve_alarms(q,
-                                     [("timestamp",
-                                       pymongo.DESCENDING)],
-                                     None)
+        all_sort = [("timestamp", pymongo.DESCENDING)]
+        limit = None
+        if pagination:
+            if not pagination.sort_keys:
+                pagination.sort_keys = ["timestamp"]
+            if not pagination.sort_dirs:
+                pagination.sort_dirs = pymongo.DESCENDING
+            all_sort, query = pymongo_utils._build_paginate_query(
+                pagination.marker_value,
+                pagination.sort_keys,
+                pagination.sort_dirs)
+            q.update(query)
+            limit = pagination.limit
+
+        return self._retrieve_alarms(q, all_sort, limit)
 
     def get_alarm_changes(self, alarm_id, on_behalf_of,
                           user=None, project=None, alarm_type=None,

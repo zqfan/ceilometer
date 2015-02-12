@@ -1,5 +1,6 @@
 #
 # Copyright Ericsson AB 2013. All rights reserved
+# Copyright 2015 Huawei Technologies Co., Ltd.
 #
 # Authors: Ildiko Vancsa <ildiko.vancsa@ericsson.com>
 #          Balazs Gibizer <balazs.gibizer@ericsson.com>
@@ -29,6 +30,7 @@ from six.moves.urllib import parse
 
 from ceilometer.i18n import _
 from ceilometer.openstack.common import log
+from ceilometer.storage import base
 
 LOG = log.getLogger(__name__)
 
@@ -484,3 +486,135 @@ class CursorProxy(pymongo.cursor.Cursor):
 
     def __getattr__(self, item):
         return getattr(self.cursor, item)
+
+
+SORT_OPERATION_MAPPING = {'desc': (pymongo.DESCENDING, '$lt'),
+                          'asce': (pymongo.ASCENDING, '$gt')}
+
+
+def _get_marker(db_collection, marker_pairs):
+    """Return the mark document according to the attribute-value pairs.
+
+    :param db_collection: Database collection that be query.
+    :param maker_pairs: Attribute-value pairs filter.
+    """
+    if db_collection is None:
+        return
+    if not marker_pairs:
+        return
+    ret = db_collection.find(marker_pairs, limit=2)
+
+    if ret.count() == 0:
+        raise base.NoResultFound
+    elif ret.count() > 1:
+        raise base.MultipleResultsFound
+    else:
+        _ret = ret.__getitem__(0)
+        return _ret
+
+
+def _recurse_sort_keys(sort_keys, marker, flag):
+    _first = sort_keys[0]
+    value = marker[_first]
+    if len(sort_keys) == 1:
+        return {_first: {flag: value}}
+    else:
+        criteria_equ = {_first: {'eq': value}}
+        criteria_cmp = _recurse_sort_keys(sort_keys[1:], marker, flag)
+    return dict(criteria_equ, ** criteria_cmp)
+
+
+def _build_sort_instructions(sort_keys=None, sort_dir='desc'):
+    """Returns a sort_instruction and paging operator.
+
+    Sort instructions are used in the query to determine what attributes
+    to sort on and what direction to use.
+    :param q: The query dict passed in.
+    :param sort_keys: array of attributes by which results be sorted.
+    :param sort_dir: direction in which results be sorted (asc, desc).
+    :return: sort instructions and paging operator
+    """
+    sort_keys = sort_keys or []
+    sort_instructions = []
+    _sort_dir, operation = SORT_OPERATION_MAPPING.get(
+        sort_dir, SORT_OPERATION_MAPPING['desc'])
+
+    for _sort_key in sort_keys:
+        _instruction = (_sort_key, _sort_dir)
+        sort_instructions.append(_instruction)
+
+    return sort_instructions, operation
+
+
+def _build_paginate_query(marker, sort_keys=None, sort_dir='desc'):
+    """Returns a query with sorting / pagination.
+
+    Pagination works by requiring sort_key and sort_dir.
+    We use the last item in previous page as the 'marker' for pagination.
+    So we return values that follow the passed marker in the order.
+    :param q: The query dict passed in.
+    :param marker: the last item of the previous page; we return the next
+                   results after this item.
+    :param sort_keys: array of attributes by which results be sorted.
+    :param sort_dir: direction in which results be sorted (asc, desc).
+    :return: sort parameters, query to use
+    """
+    all_sort = []
+    sort_keys = sort_keys or []
+    all_sort, _op = _build_sort_instructions(sort_keys, sort_dir)
+
+    if marker is not None:
+        sort_criteria_list = []
+
+        for i in range(len(sort_keys)):
+            # NOTE(fengqian): Generate the query criteria recursively.
+            # sort_keys=[k1, k2, k3], maker_value=[v1, v2, v3]
+            # sort_flags = ['$lt', '$gt', 'lt'].
+            # The query criteria should be
+            # {'k3': {'$lt': 'v3'}, 'k2': {'eq': 'v2'}, 'k1':
+            #     {'eq': 'v1'}},
+            # {'k2': {'$gt': 'v2'}, 'k1': {'eq': 'v1'}},
+            # {'k1': {'$lt': 'v1'}} with 'OR' operation.
+            # Each recurse will generate one items of three.
+            sort_criteria_list.append(_recurse_sort_keys(
+                                      sort_keys[:(len(sort_keys) - i)],
+                                      marker, _op))
+
+        metaquery = {"$or": sort_criteria_list}
+    else:
+        metaquery = {}
+
+    return all_sort, metaquery
+
+
+def paginate_query(q, db_collection, limit=None, marker=None,
+                   sort_keys=None, sort_dir='desc'):
+    """Returns a query result with sorting / pagination.
+
+    Pagination works by requiring sort_key and sort_dir.
+    We use the last item in previous page as the 'marker' for pagination.
+    So we return values that follow the passed marker in the order.
+
+    :param q: the query dict passed in.
+    :param db_collection: Database collection that be query.
+    :param limit: maximum number of items to return.
+    :param marker: the last item of the previous page; we return the next
+                   results after this item.
+    :param sort_keys: array of attributes by which results be sorted.
+    :param sort_dir: direction in which results be sorted (asc, desc).
+
+    :return: The query with sorting/pagination added.
+    """
+
+    sort_keys = sort_keys or []
+    all_sort, query = _build_paginate_query(marker,
+                                            sort_keys,
+                                            sort_dir)
+    q.update(query)
+
+    # NOTE(Fengqian): MongoDB collection.find can not handle limit
+    # when it equals None, it will raise TypeError, so we treat
+    # None as 0 for the value of limit.
+    if limit is None:
+        limit = 0
+    return db_collection.find(q, limit=limit, sort=all_sort)

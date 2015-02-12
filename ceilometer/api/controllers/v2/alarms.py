@@ -852,8 +852,8 @@ class AlarmsController(rest.RestController):
         self._record_creation(conn, change, alarm.alarm_id, now)
         return Alarm.from_db_model(alarm)
 
-    @wsme_pecan.wsexpose([Alarm], [base.Query])
-    def get_all(self, q=None):
+    @wsme_pecan.wsexpose([Alarm], [base.Query], base.Pagination)
+    def get_all(self, q=None, p=None):
         """Return all alarms, based on the query provided.
 
         :param q: Filter rules for the alarms to be returned.
@@ -866,5 +866,12 @@ class AlarmsController(rest.RestController):
         kwargs = v2_utils.query_to_kwargs(
             q, pecan.request.alarm_storage_conn.get_alarms,
             allow_timestamps=False)
+
+        if p:
+            for x in q:
+                if x.field == 'alarm_id':
+                    raise base.ClientSideError(_("alarm_id query filter "
+                                                 "conflicts with pagination"))
+            kwargs['pagination'] = p.to_db_model()
         return [Alarm.from_db_model(m)
                 for m in pecan.request.alarm_storage_conn.get_alarms(**kwargs)]
