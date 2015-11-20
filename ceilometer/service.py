@@ -110,7 +110,7 @@ def get_workers(name):
 def prepare_service(argv=None):
     i18n.enable_lazy()
     log_levels = (cfg.CONF.default_log_levels +
-                  ['stevedore=INFO', 'keystoneclient=INFO'])
+                  ['stevedore=INFO', 'keystoneclient=INFO', 'monascaclient=INFO'])
     cfg.set_defaults(log.log_opts,
                      default_log_levels=log_levels)
     if argv is None:

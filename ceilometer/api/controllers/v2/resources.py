@@ -137,6 +137,9 @@ class ResourcesController(rest.RestController):
         """
 
         rbac.enforce('get_resources', pecan.request)
+        from oslo_log import log
+        LOG = log.getLogger(__name__)
+        LOG.error("zqfan: enter resource-list")
 
         q = q or []
         kwargs = utils.query_to_kwargs(
@@ -144,6 +147,6 @@ class ResourcesController(rest.RestController):
         resources = [
             Resource.from_db_and_links(r,
                                        self._resource_links(r.resource_id,
-                                                            meter_links))
+                                                            meter_links=0))
             for r in pecan.request.storage_conn.get_resources(**kwargs)]
         return resources

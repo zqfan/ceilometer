@@ -484,5 +484,7 @@ class MetersController(rest.RestController):
         # Timestamp field is not supported for Meter queries
         kwargs = v2_utils.query_to_kwargs(
             q, pecan.request.storage_conn.get_meters, allow_timestamps=False)
-        return [Meter.from_db_model(m)
+        result = [Meter.from_db_model(m)
                 for m in pecan.request.storage_conn.get_meters(**kwargs)]
+        LOG.error("zqfan: exit MetersController.get_all")
+        return result
